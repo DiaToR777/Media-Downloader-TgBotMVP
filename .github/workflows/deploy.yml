@@ -22,7 +22,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/diatora777/media-downloader-tgbotmvp:latest
+          tags: ghcr.io/diator777/media-downloader-tgbotmvp:latest
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1

@@ -1,6 +1,6 @@
 services:
   bot:
-    image: ghcr.io/diatora777/media-downloader-tgbotmvp:latest
+    image: ghcr.io/diator777/media-downloader-tgbotmvp:latest
     restart: unless-stopped
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
