@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -18,11 +22,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ghcr.io/diatora777/media-downloader-tgbotmvp:latest
+          tags: ghcr.io/diator777/media-downloader-tgbotmvp:latest
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1
@@ -31,6 +35,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u diator777 --password-stdin
             cd ~/tgbot
             docker compose pull
             docker compose up -d
