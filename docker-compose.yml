@@ -1,0 +1,9 @@
+services:
+  bot:
+    image: ghcr.io/diatora777/media-downloader-tgbotmvp:latest
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_TG_ID=${ADMIN_TG_ID}
+    volumes:
+      - ./downloads:/app/downloads
