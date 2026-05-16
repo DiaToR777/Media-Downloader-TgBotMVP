@@ -11,8 +11,6 @@ namespace MediaDownloaderTgBotMVP
         private TelegramBotClient _bot;
         private readonly long _adminId;
 
-        private string _taskFolder;
-
         private readonly string _tempFolder;
         public TelegramService()
         {
@@ -76,18 +74,18 @@ namespace MediaDownloaderTgBotMVP
         {
             Message progressMessage = await _bot.SendMessage(chatId, "⏳ Завантажую відео з TikTok...", cancellationToken: ct);
 
+            var taskFolder = Path.Combine(_tempFolder, Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(taskFolder);
+
             try
             {
-                _taskFolder = Path.Combine(_tempFolder, Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(_taskFolder);
-
                 using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 downloadCts.CancelAfter(TimeSpan.FromMinutes(3));
                 
                 var psi = new YtDlpPsiBuilder()
                     .WithUrl(url)
                     .WithFormat("mp4")
-                    .WithOutputPath(_taskFolder)
+                    .WithOutputPath(taskFolder)
                     .Build();
 
                 using (var process = new Process { StartInfo = psi })
@@ -96,19 +94,19 @@ namespace MediaDownloaderTgBotMVP
 
                     downloadCts.Token.Register(() =>
                     {
-                        try { process.Kill(); } catch { }
+                        try { process.Kill(entireProcessTree: true); } catch { }
                     });
 
                     string stderr = await process.StandardError.ReadToEndAsync(downloadCts.Token);
                     await process.WaitForExitAsync(downloadCts.Token);
-
+                    
                     Console.WriteLine($"yt-dlp stderr: {stderr}");
 
                     if (process.ExitCode != 0)
                         throw new Exception($"yt-dlp помилка: {stderr}");
                 }
 
-                var filePath = Directory.GetFiles(_taskFolder).FirstOrDefault();
+                var filePath = Directory.GetFiles(taskFolder).FirstOrDefault();
                 Console.WriteLine($"Знайдено файл: {filePath ?? "null"}");
 
                 if (filePath == null)
@@ -153,8 +151,8 @@ namespace MediaDownloaderTgBotMVP
             }
             finally
             {
-                if (Directory.Exists(_taskFolder))
-                    Directory.Delete(_taskFolder, recursive: true);
+                if (Directory.Exists(taskFolder))
+                    Directory.Delete(taskFolder, recursive: true);
             }
         }
         public async Task HandleError(ITelegramBotClient bot, Exception ex, CancellationToken ct)
@@ -173,5 +171,4 @@ namespace MediaDownloaderTgBotMVP
             );
         }
     }
-
 }
