@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "MediaDownloaderTgBotMVP": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
