@@ -11,7 +11,8 @@ namespace MediaDownloaderTgBotMVP
         private TelegramBotClient _bot;
         private readonly long _adminId;
 
-        private readonly string _tempFolder;
+        private readonly string _tempFolder; 
+        private readonly DownloadWorker _downloadWorker;
         public TelegramService()
         {
             var token = Environment.GetEnvironmentVariable("BOT_TOKEN");
@@ -29,6 +30,8 @@ namespace MediaDownloaderTgBotMVP
             {
                 Directory.CreateDirectory(_tempFolder);
             }
+
+            _downloadWorker = new DownloadWorker(_bot, _tempFolder);
         }
         public async Task Start()
         {
@@ -36,6 +39,8 @@ namespace MediaDownloaderTgBotMVP
             Console.WriteLine($"✓ Бот @{me.Username} запущено");
 
             var cts = new CancellationTokenSource();
+
+            _downloadWorker.Start(cts.Token);
 
             _bot.StartReceiving(
                 HandleUpdate,
@@ -72,87 +77,13 @@ namespace MediaDownloaderTgBotMVP
 
         private async Task StartDownloading(long chatId, string url, CancellationToken ct)
         {
-            Message progressMessage = await _bot.SendMessage(chatId, "⏳ Завантажую відео з TikTok...", cancellationToken: ct);
+            Message progressMessage = await _bot.SendMessage(chatId, "⏳ Додано в чергу завантаження...", cancellationToken: ct);
 
-            var taskFolder = Path.Combine(_tempFolder, Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(taskFolder);
+            var task = new DownloadTask(chatId, url, progressMessage);
 
-            try
+            if (!_downloadWorker.Writer.TryWrite(task))
             {
-                using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                downloadCts.CancelAfter(TimeSpan.FromMinutes(3));
-                
-                var psi = new YtDlpPsiBuilder()
-                    .WithUrl(url)
-                    .WithFormat("mp4")
-                    .WithOutputPath(taskFolder)
-                    .Build();
-
-                using (var process = new Process { StartInfo = psi })
-                {
-                    process.Start();
-
-                    downloadCts.Token.Register(() =>
-                    {
-                        try { process.Kill(entireProcessTree: true); } catch { }
-                    });
-
-                    string stderr = await process.StandardError.ReadToEndAsync(downloadCts.Token);
-                    await process.WaitForExitAsync(downloadCts.Token);
-                    
-                    Console.WriteLine($"yt-dlp stderr: {stderr}");
-
-                    if (process.ExitCode != 0)
-                        throw new Exception($"yt-dlp помилка: {stderr}");
-                }
-
-                var filePath = Directory.GetFiles(taskFolder).FirstOrDefault();
-                Console.WriteLine($"Знайдено файл: {filePath ?? "null"}");
-
-                if (filePath == null)
-                    throw new FileNotFoundException("Файл не був знайдений після завантаження.");
-
-                var fileSize = new FileInfo(filePath).Length;
-                if (fileSize > 50 * 1024 * 1024)
-                    throw new Exception($"Відео занадто велике ({fileSize / 1024 / 1024}MB). Максимум 50MB.");
-
-                await _bot.EditMessageText(chatId, progressMessage.MessageId, "📤 Надсилаю відео...", cancellationToken: ct);
-
-                using (var stream = File.OpenRead(filePath))
-                {
-                    await _bot.SendVideo(
-                        chatId: chatId,
-                        video: InputFile.FromStream(stream, Path.GetFileName(filePath)),
-                        cancellationToken: ct
-                    );
-                }
-
-                await _bot.DeleteMessage(chatId, progressMessage.MessageId, cancellationToken: ct);
-            }
-            catch (OperationCanceledException)
-            {
-                await _bot.EditMessageText(chatId, progressMessage.MessageId, "⏱ Час очікування вийшов. Спробуйте ще раз.", cancellationToken: ct);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[{chatId}] ❌ Критична помилка: {ex.Message}");
-
-                await _bot.SendMessage(chatId, "❌ Не вдалося завантажити відео. Спробуйте пізніше.", cancellationToken: ct);
-
-                string rawStack = ex.ToString();
-                string safeStack = rawStack.Length > 2000 ? rawStack[..2000] + "\n... [обрізано]" : rawStack;
-
-                await _bot.SendMessage(
-                    chatId: _adminId,
-                    text: $"🚨 **КРИТИЧНИЙ ЗБІЙ**\nПомилка: `{ex.Message}`\n\nСтек:\n`{safeStack}`",
-                    parseMode: ParseMode.Markdown,
-                    cancellationToken: ct
-                );
-            }
-            finally
-            {
-                if (Directory.Exists(taskFolder))
-                    Directory.Delete(taskFolder, recursive: true);
+                await _bot.EditMessageText(chatId, progressMessage.MessageId, "❌ Черга переповнена, спробуйте пізніше.", cancellationToken: ct);
             }
         }
         public async Task HandleError(ITelegramBotClient bot, Exception ex, CancellationToken ct)

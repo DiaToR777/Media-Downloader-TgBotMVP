@@ -56,7 +56,7 @@ namespace MediaDownloaderTgBotMVP
             {
                 FileName = OperatingSystem.IsWindows() ? "yt-dlp.exe" : "yt-dlp",
                 Arguments = arguments,
-                RedirectStandardOutput = true,
+                RedirectStandardOutput = false,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true

@@ -1,0 +1,115 @@
+﻿using System.Diagnostics;
+using System.Threading.Channels;
+using Telegram.Bot;
+using Telegram.Bot.Types;
+
+namespace MediaDownloaderTgBotMVP;
+
+public class DownloadWorker
+{
+    private readonly Channel<DownloadTask> _queue;
+    private readonly ITelegramBotClient _bot;
+    private readonly string _tempFolder;
+    private readonly int _maxConcurrentDownloads = 3;
+
+    public DownloadWorker(ITelegramBotClient bot, string tempFolder)
+    {
+        _bot = bot;
+        _tempFolder = tempFolder;
+        _queue = Channel.CreateBounded<DownloadTask>(new BoundedChannelOptions(100)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = false,
+            SingleWriter = false
+        });
+    }
+
+    public ChannelWriter<DownloadTask> Writer => _queue.Writer;
+
+    public void Start(CancellationToken ct)
+    {
+        for (int i = 0; i < _maxConcurrentDownloads; i++)
+        {
+            int workerId = i + 1;
+            Task.Run(() => ProcessQueueAsync(workerId, ct), ct);
+        }
+        Console.WriteLine($"✓ Запущено пул воркерів ({_maxConcurrentDownloads} паралельних потоків)");
+    }
+
+    private async Task ProcessQueueAsync(int workerId, CancellationToken ct)
+    {
+        await foreach (var task in _queue.Reader.ReadAllAsync(ct))
+        {
+            Console.WriteLine($"[Worker {workerId}] Взяв у роботу: {task.Url} для ChatId: {task.ChatId}");
+
+            string taskFolder = Path.Combine(_tempFolder, Guid.NewGuid().ToString("N"));
+
+            try
+            {
+                Directory.CreateDirectory(taskFolder);
+
+                using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                downloadCts.CancelAfter(TimeSpan.FromMinutes(3));
+
+                var psi = new YtDlpPsiBuilder()
+                    .WithUrl(task.Url)
+                    .WithFormat("mp4")
+                    .WithOutputPath(taskFolder)
+                    .Build();
+
+                using (var process = new Process { StartInfo = psi })
+                {
+                    process.Start();
+
+                    using var registration = downloadCts.Token.Register(() =>
+                    {
+                        try { process.Kill(entireProcessTree: true); } catch { }
+                    });
+
+                    string stderr = await process.StandardError.ReadToEndAsync(downloadCts.Token);
+                    await process.WaitForExitAsync(downloadCts.Token);
+
+                    Console.WriteLine($"[Worker {workerId}] yt-dlp stderr: {stderr}");
+
+                    if (process.ExitCode != 0)
+                        throw new Exception($"yt-dlp помилка: {stderr}");
+                }
+
+                var filePath = Directory.GetFiles(taskFolder).FirstOrDefault();
+                if (filePath == null)
+                    throw new FileNotFoundException("Файл не знайдено.");
+
+                var fileSize = new FileInfo(filePath).Length;
+                if (fileSize > 50 * 1024 * 1024)
+                    throw new Exception($"Відео занадто велике ({fileSize / 1024 / 1024}MB). Максимум 50MB.");
+
+                await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "📤 Надсилаю відео...", cancellationToken: ct);
+
+                using (var stream = File.OpenRead(filePath))
+                {
+                    await _bot.SendVideo(
+                        chatId: task.ChatId,
+                        video: InputFile.FromStream(stream, Path.GetFileName(filePath)),
+                        cancellationToken: ct
+                    );
+                }
+
+                await _bot.DeleteMessage(task.ChatId, task.ProgressMessage.MessageId, cancellationToken: ct);
+            }
+            catch (OperationCanceledException)
+            {
+                try { await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "⏱ Час очікування вийшов.", cancellationToken: ct); } catch { }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Worker {workerId}] ❌ {ex.Message}");
+                try { await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, $"❌ Помилка: {ex.Message}", cancellationToken: ct); } catch { }
+            }
+            finally
+            {
+                if (Directory.Exists(taskFolder))
+                    try { Directory.Delete(taskFolder, recursive: true); } catch { }
+            }
+        }
+    }
+}
