@@ -10,8 +10,11 @@ RUN dotnet publish "MediaDownloaderTgBotMVP.csproj" -c Release -o /app/publish /
 # === Стейдж 2: Рантайм ===
 FROM mcr.microsoft.com/dotnet/runtime:8.0 AS final
 WORKDIR /app
-RUN apt-get update && apt-get install -y ffmpeg python3 curl \
+RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip curl unzip \
     && rm -rf /var/lib/apt/lists/*
+RUN pip install curl_cffi --break-system-packages
+RUN curl -fsSL https://deno.land/install.sh | sh
+ENV PATH="/root/.deno/bin:$PATH"
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp
 COPY --from=build /app/publish .
