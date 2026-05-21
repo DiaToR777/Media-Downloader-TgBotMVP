@@ -12,14 +12,14 @@ public class DownloadWorker
     private readonly string _tempFolder;
     private readonly int _maxConcurrentDownloads = 3;
 
-    public DownloadWorker(ITelegramBotClient bot)
+    public DownloadWorker(ITelegramBotClient bot, string tempFolder)
     {
         _bot = bot;
-        _tempFolder = Path.Combine(AppContext.BaseDirectory, "downloads");
+        _tempFolder = tempFolder;
+
         if (!Directory.Exists(_tempFolder))
-        {
             Directory.CreateDirectory(_tempFolder);
-        }
+
         _queue = Channel.CreateBounded<DownloadTask>(new BoundedChannelOptions(100)
         {
             FullMode = BoundedChannelFullMode.Wait,

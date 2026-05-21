@@ -11,19 +11,16 @@ namespace MediaDownloaderTgBotMVP
         private readonly long _adminId;
 
         private readonly DownloadWorker _downloadWorker;
-        public TelegramService()
+        public TelegramService(DownloadWorker downloadWorker, ITelegramBotClient bot)
         {
-            var token = Environment.GetEnvironmentVariable("BOT_TOKEN");
-            if (string.IsNullOrEmpty(token))
-                throw new ArgumentNullException("BOT_TOKEN missing");
-            _bot = new TelegramBotClient(token);
+            _bot = (TelegramBotClient)bot;
 
             var adminIdStr = Environment.GetEnvironmentVariable("ADMIN_TG_ID");
             if (string.IsNullOrEmpty(adminIdStr))
                 throw new ArgumentNullException("ADMIN_TG_ID missing");
             _adminId = long.Parse(adminIdStr);
 
-            _downloadWorker = new DownloadWorker(_bot);
+            _downloadWorker = downloadWorker;
         }
 
         public async Task Start()
@@ -79,6 +76,7 @@ namespace MediaDownloaderTgBotMVP
                 await _bot.EditMessageText(chatId, progressMessage.MessageId, "❌ Черга переповнена, спробуйте пізніше.", cancellationToken: ct);
             }
         }
+
         public async Task HandleError(ITelegramBotClient bot, Exception ex, CancellationToken ct)
         {
             Console.WriteLine($"❌ Помилка бота: {ex.Message}");
