@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using Telegram.Bot;
+﻿using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -11,7 +10,6 @@ namespace MediaDownloaderTgBotMVP
         private TelegramBotClient _bot;
         private readonly long _adminId;
 
-        private readonly string _tempFolder; 
         private readonly DownloadWorker _downloadWorker;
         public TelegramService()
         {
@@ -25,14 +23,9 @@ namespace MediaDownloaderTgBotMVP
                 throw new ArgumentNullException("ADMIN_TG_ID missing");
             _adminId = long.Parse(adminIdStr);
 
-            _tempFolder = Path.Combine(AppContext.BaseDirectory, "downloads");
-            if (!Directory.Exists(_tempFolder))
-            {
-                Directory.CreateDirectory(_tempFolder);
-            }
-
-            _downloadWorker = new DownloadWorker(_bot, _tempFolder);
+            _downloadWorker = new DownloadWorker(_bot);
         }
+
         public async Task Start()
         {
             var me = await _bot.GetMe();
@@ -51,6 +44,7 @@ namespace MediaDownloaderTgBotMVP
 
             Console.WriteLine("Бот слухає повідомлення...");
         }
+
         private async Task HandleUpdate(ITelegramBotClient bot, Update update, CancellationToken ct)
         {
             if (update.Message?.Text is not { } text) return;
@@ -73,7 +67,6 @@ namespace MediaDownloaderTgBotMVP
                 await StartDownloading(chatId, text, ct);
             }
         }
-
 
         private async Task StartDownloading(long chatId, string url, CancellationToken ct)
         {
@@ -101,5 +94,6 @@ namespace MediaDownloaderTgBotMVP
                 cancellationToken: ct
             );
         }
+
     }
 }
