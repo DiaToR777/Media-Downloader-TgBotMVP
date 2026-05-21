@@ -5,15 +5,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
 
-var config = new ConfigurationBuilder()
-    .AddJsonFile("appsettings.json", optional: true)
-    .AddEnvironmentVariables()
-    .Build();
-
 var services = new ServiceCollection();
 
 var connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING")
-    ?? config.GetConnectionString("DefaultConnection")
     ?? throw new Exception("CONNECTION_STRING missing");
 
 services.AddDbContext<AppDbContext>(options =>
@@ -28,7 +22,6 @@ services.AddSingleton<DownloadWorker>(provider =>
 });
 
 var token = Environment.GetEnvironmentVariable("BOT_TOKEN")
-    ?? config["BOT_TOKEN"]
     ?? throw new Exception("BOT_TOKEN missing");
 
 services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(token));
