@@ -12,8 +12,12 @@ var config = new ConfigurationBuilder()
 
 var services = new ServiceCollection();
 
+var connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING")
+    ?? config.GetConnectionString("DefaultConnection")
+    ?? throw new Exception("CONNECTION_STRING missing");
+
 services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(config.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
 
 services.AddSingleton<DownloadWorker>(provider =>
 {
@@ -29,7 +33,13 @@ var token = Environment.GetEnvironmentVariable("BOT_TOKEN")
 
 services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(token));
 
-services.AddSingleton<DownloadWorker>();
+services.AddSingleton<DownloadWorker>(provider =>
+{
+    var bot = provider.GetRequiredService<ITelegramBotClient>();
+    var tempFolder = Path.Combine(AppContext.BaseDirectory, "downloads");
+    return new DownloadWorker(bot, tempFolder);
+}); 
+
 services.AddSingleton<TelegramService>();
 
 var provider = services.BuildServiceProvider();
