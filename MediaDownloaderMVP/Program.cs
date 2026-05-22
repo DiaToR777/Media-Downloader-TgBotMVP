@@ -1,7 +1,7 @@
 ﻿using MediaDownloaderTgBotMVP;
 using MediaDownloaderTgBotMVP.Database;
+using MediaDownloaderTgBotMVP.Database.Repositories;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
 
@@ -34,6 +34,8 @@ services.AddSingleton<DownloadWorker>(provider =>
 }); 
 
 services.AddSingleton<TelegramService>();
+
+services.AddScoped<UserRepository>();
 
 var provider = services.BuildServiceProvider();
 

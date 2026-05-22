@@ -1,4 +1,6 @@
-﻿using Telegram.Bot;
+﻿using MediaDownloaderTgBotMVP.Database.Repositories;
+using Microsoft.Extensions.DependencyInjection;
+using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -11,7 +13,8 @@ namespace MediaDownloaderTgBotMVP
         private readonly long _adminId;
 
         private readonly DownloadWorker _downloadWorker;
-        public TelegramService(DownloadWorker downloadWorker, ITelegramBotClient bot)
+        private readonly IServiceScopeFactory _scopeFactory;
+        public TelegramService(DownloadWorker downloadWorker, ITelegramBotClient bot, IServiceScopeFactory scopeFactory)
         {
             _bot = (TelegramBotClient)bot;
 
@@ -21,6 +24,7 @@ namespace MediaDownloaderTgBotMVP
             _adminId = long.Parse(adminIdStr);
 
             _downloadWorker = downloadWorker;
+            _scopeFactory = scopeFactory;
         }
 
         public async Task Start()
@@ -47,8 +51,14 @@ namespace MediaDownloaderTgBotMVP
             if (update.Message?.Text is not { } text) return;
 
             var chatId = update.Message.Chat.Id;
+            var username = update.Message.Chat.Username;
+            var firstName = update.Message.Chat.FirstName;
 
             Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] {update.Message.Chat.FirstName ?? "User"}, userId {{ {update.Message.Chat.Id} }} username {{ {update.Message.Chat.Username ?? "null"} }} : {text}");
+
+            using var scope = _scopeFactory.CreateScope();
+            var userRepo = scope.ServiceProvider.GetRequiredService<UserRepository>();
+            await userRepo.GetOrCreateAsync(chatId, username, firstName);
 
             if (text == "/start")
             {
