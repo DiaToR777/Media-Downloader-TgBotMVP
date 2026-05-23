@@ -1,4 +1,6 @@
-﻿using System.Diagnostics;
+﻿using MediaDownloaderTgBotMVP.Database.Repositories;
+using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics;
 using System.Threading.Channels;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -11,11 +13,17 @@ public class DownloadWorker
     private readonly ITelegramBotClient _bot;
     private readonly string _tempFolder;
     private readonly int _maxConcurrentDownloads = 3;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public DownloadWorker(ITelegramBotClient bot, string tempFolder)
+    public DownloadWorker(ITelegramBotClient bot, string tempFolder, IServiceScopeFactory scopeFactory)
     {
         _bot = bot;
         _tempFolder = tempFolder;
+        _scopeFactory = scopeFactory;
+
+        if (!Directory.Exists(_tempFolder))
+            Directory.CreateDirectory(_tempFolder);
+
         _queue = Channel.CreateBounded<DownloadTask>(new BoundedChannelOptions(100)
         {
             FullMode = BoundedChannelFullMode.Wait,
@@ -41,6 +49,19 @@ public class DownloadWorker
         await foreach (var task in _queue.Reader.ReadAllAsync(ct))
         {
             Console.WriteLine($"[Worker {workerId}] Взяв у роботу: {task.Url} для ChatId: {task.ChatId}");
+
+            using var scope = _scopeFactory.CreateScope();
+            var cacheRepo = scope.ServiceProvider.GetRequiredService<CachedMediaRepository>();
+
+            var cached = await cacheRepo.FindAsync(task.Url, "video", "720p");
+            if (cached != null)
+            {
+                Console.WriteLine($"[Worker {workerId}] Кэш знайдено! Відправляємо file_id");
+                await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "📤 Надсилаю відео...", cancellationToken: ct);
+                await _bot.SendVideo(task.ChatId, cached.FileId, cancellationToken: ct);
+                await _bot.DeleteMessage(task.ChatId, task.ProgressMessage.MessageId, cancellationToken: ct);
+                continue;
+            }
 
             string taskFolder = Path.Combine(_tempFolder, Guid.NewGuid().ToString("N"));
 
@@ -87,11 +108,26 @@ public class DownloadWorker
 
                 using (var stream = File.OpenRead(filePath))
                 {
-                    await _bot.SendVideo(
+                    var sentMessage = await _bot.SendVideo(
                         chatId: task.ChatId,
                         video: InputFile.FromStream(stream, Path.GetFileName(filePath)),
                         cancellationToken: ct
                     );
+
+                    if (sentMessage.Video?.FileId != null)
+                    {
+                        await cacheRepo.SaveAsync(
+                            sourceUrl: task.Url,
+                            platform: task.Platform,
+                            fileId: sentMessage.Video.FileId,
+                            fileType: "video", //TODO Filetype
+                            quality: "720p", //TODO Quality
+                            fileSizeBytes: fileSize
+                            //TODO videoId
+                        );
+                        Console.WriteLine($"[Worker {workerId}] Збережено в кэш: {sentMessage.Video.FileId}");
+
+                    }
                 }
 
                 await _bot.DeleteMessage(task.ChatId, task.ProgressMessage.MessageId, cancellationToken: ct);

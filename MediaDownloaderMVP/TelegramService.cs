@@ -1,4 +1,6 @@
-﻿using System.Diagnostics;
+﻿using MediaDownloaderTgBotMVP.Database.Repositories;
+using MediaDownloaderTgBotMVP.Helpers;
+using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
@@ -11,28 +13,21 @@ namespace MediaDownloaderTgBotMVP
         private TelegramBotClient _bot;
         private readonly long _adminId;
 
-        private readonly string _tempFolder; 
         private readonly DownloadWorker _downloadWorker;
-        public TelegramService()
+        private readonly IServiceScopeFactory _scopeFactory;
+        public TelegramService(DownloadWorker downloadWorker, ITelegramBotClient bot, IServiceScopeFactory scopeFactory)
         {
-            var token = Environment.GetEnvironmentVariable("BOT_TOKEN");
-            if (string.IsNullOrEmpty(token))
-                throw new ArgumentNullException("BOT_TOKEN missing");
-            _bot = new TelegramBotClient(token);
+            _bot = (TelegramBotClient)bot;
 
             var adminIdStr = Environment.GetEnvironmentVariable("ADMIN_TG_ID");
             if (string.IsNullOrEmpty(adminIdStr))
                 throw new ArgumentNullException("ADMIN_TG_ID missing");
             _adminId = long.Parse(adminIdStr);
 
-            _tempFolder = Path.Combine(AppContext.BaseDirectory, "downloads");
-            if (!Directory.Exists(_tempFolder))
-            {
-                Directory.CreateDirectory(_tempFolder);
-            }
-
-            _downloadWorker = new DownloadWorker(_bot, _tempFolder);
+            _downloadWorker = downloadWorker;
+            _scopeFactory = scopeFactory;
         }
+
         public async Task Start()
         {
             var me = await _bot.GetMe();
@@ -51,22 +46,29 @@ namespace MediaDownloaderTgBotMVP
 
             Console.WriteLine("Бот слухає повідомлення...");
         }
+
         private async Task HandleUpdate(ITelegramBotClient bot, Update update, CancellationToken ct)
         {
             if (update.Message?.Text is not { } text) return;
 
             var chatId = update.Message.Chat.Id;
+            var username = update.Message.Chat.Username;
+            var firstName = update.Message.Chat.FirstName;
 
             Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] {update.Message.Chat.FirstName ?? "User"}, userId {{ {update.Message.Chat.Id} }} username {{ {update.Message.Chat.Username ?? "null"} }} : {text}");
 
+            using var scope = _scopeFactory.CreateScope();
+            var userRepo = scope.ServiceProvider.GetRequiredService<UserRepository>();
+            await userRepo.GetOrCreateAsync(chatId, username, firstName);
+
             if (text == "/start")
             {
-                await bot.SendMessage(chatId, "Привіт! Надішли мені посилання на TikTok, і я завантажу відео.", cancellationToken: ct);
+                await bot.SendMessage(chatId, "Привіт! Надішли мені посилання, і я завантажу відео.", cancellationToken: ct);
             }
             else if (text == "/help")
             {
                 await bot.SendMessage(chatId, "Вас вітає MediaDownloader!\n" +
-                    "Просто відправ посилання на відео з TikTok, і я завантажу його для вас.", cancellationToken: ct);
+                    "Просто відправ посилання на відео, і я завантажу його для вас.", cancellationToken: ct);
             }
             else if (Uri.IsWellFormedUriString(text, UriKind.Absolute))
             {
@@ -74,18 +76,20 @@ namespace MediaDownloaderTgBotMVP
             }
         }
 
-
         private async Task StartDownloading(long chatId, string url, CancellationToken ct)
         {
             Message progressMessage = await _bot.SendMessage(chatId, "⏳ Додано в чергу завантаження...", cancellationToken: ct);
 
-            var task = new DownloadTask(chatId, url, progressMessage);
+            var mediaPlatform = PlatformDetector.Detect(url);
+
+            var task = new DownloadTask(chatId, url, progressMessage, mediaPlatform);
 
             if (!_downloadWorker.Writer.TryWrite(task))
             {
                 await _bot.EditMessageText(chatId, progressMessage.MessageId, "❌ Черга переповнена, спробуйте пізніше.", cancellationToken: ct);
             }
         }
+
         public async Task HandleError(ITelegramBotClient bot, Exception ex, CancellationToken ct)
         {
             Console.WriteLine($"❌ Помилка бота: {ex.Message}");
@@ -101,5 +105,6 @@ namespace MediaDownloaderTgBotMVP
                 cancellationToken: ct
             );
         }
+
     }
 }
