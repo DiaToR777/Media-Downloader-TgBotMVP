@@ -42,7 +42,7 @@ namespace MediaDownloaderTgBotMVP
             string formatArgs = _format switch
             {
                 "mp3" => "-x --audio-format mp3",
-                "mp4" => "-f bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4] --merge-output-format mp4",
+                "mp4" => "-f \"bestvideo[vcodec=h264]+bestaudio/best\" --merge-output-format mp4", //TODO Fallback for 265H codec
                 _ => throw new InvalidOperationException("Неизвестный формат: " + _format)
             };
 

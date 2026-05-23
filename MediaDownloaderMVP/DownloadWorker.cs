@@ -118,11 +118,12 @@ public class DownloadWorker
                     {
                         await cacheRepo.SaveAsync(
                             sourceUrl: task.Url,
-                            platform: "tiktok",
+                            platform: task.Platform,
                             fileId: sentMessage.Video.FileId,
-                            fileType: "video",
-                            quality: "720p",
+                            fileType: "video", //TODO Filetype
+                            quality: "720p", //TODO Quality
                             fileSizeBytes: fileSize
+                            //TODO videoId
                         );
                         Console.WriteLine($"[Worker {workerId}] Збережено в кэш: {sentMessage.Video.FileId}");
 

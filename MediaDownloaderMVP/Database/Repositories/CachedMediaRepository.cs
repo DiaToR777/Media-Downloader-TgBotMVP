@@ -1,4 +1,5 @@
 ﻿using MediaDownloaderTgBotMVP.Database.Entities;
+using MediaDownloaderTgBotMVP.Database.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace MediaDownloaderTgBotMVP.Database.Repositories
@@ -20,7 +21,7 @@ namespace MediaDownloaderTgBotMVP.Database.Repositories
                     c.Quality == quality);
         }
 
-        public async Task SaveAsync(string sourceUrl, string platform, string fileId, string fileType, string quality, long fileSizeBytes)
+        public async Task SaveAsync(string sourceUrl, Platform platform, string fileId, string fileType, string quality, long fileSizeBytes)
         {
             var cached = new CachedMedia
             {

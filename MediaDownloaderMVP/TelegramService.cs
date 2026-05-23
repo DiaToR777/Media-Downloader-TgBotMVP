@@ -1,4 +1,5 @@
 ﻿using MediaDownloaderTgBotMVP.Database.Repositories;
+using MediaDownloaderTgBotMVP.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
@@ -62,12 +63,12 @@ namespace MediaDownloaderTgBotMVP
 
             if (text == "/start")
             {
-                await bot.SendMessage(chatId, "Привіт! Надішли мені посилання на TikTok, і я завантажу відео.", cancellationToken: ct);
+                await bot.SendMessage(chatId, "Привіт! Надішли мені посилання, і я завантажу відео.", cancellationToken: ct);
             }
             else if (text == "/help")
             {
                 await bot.SendMessage(chatId, "Вас вітає MediaDownloader!\n" +
-                    "Просто відправ посилання на відео з TikTok, і я завантажу його для вас.", cancellationToken: ct);
+                    "Просто відправ посилання на відео, і я завантажу його для вас.", cancellationToken: ct);
             }
             else if (Uri.IsWellFormedUriString(text, UriKind.Absolute))
             {
@@ -79,7 +80,9 @@ namespace MediaDownloaderTgBotMVP
         {
             Message progressMessage = await _bot.SendMessage(chatId, "⏳ Додано в чергу завантаження...", cancellationToken: ct);
 
-            var task = new DownloadTask(chatId, url, progressMessage);
+            var mediaPlatform = PlatformDetector.Detect(url);
+
+            var task = new DownloadTask(chatId, url, progressMessage, mediaPlatform);
 
             if (!_downloadWorker.Writer.TryWrite(task))
             {

@@ -1,11 +1,11 @@
-﻿
+﻿using MediaDownloaderTgBotMVP.Database.Enums;
 namespace MediaDownloaderTgBotMVP.Database.Entities
 {
     public class CachedMedia
     {
         public int Id { get; set; }
         public string SourceUrl { get; set; } = string.Empty;
-        public string Platform { get; set; } = string.Empty;
+        public Platform Platform { get; set; } 
         public string FileId { get; set; } = string.Empty;
         public string FileType { get; set; } = "video";
         public string Quality { get; set; } = "720p";
