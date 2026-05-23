@@ -5,5 +5,18 @@ services:
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_TG_ID=${ADMIN_TG_ID}
+      - CONNECTION_STRING=${CONNECTION_STRING}
     volumes:
       - ./downloads:/app/downloads
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=mediabot
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
