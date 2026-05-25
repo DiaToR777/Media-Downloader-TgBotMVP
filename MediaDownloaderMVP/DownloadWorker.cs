@@ -53,7 +53,10 @@ public class DownloadWorker
             using var scope = _scopeFactory.CreateScope();
             var cacheRepo = scope.ServiceProvider.GetRequiredService<CachedMediaRepository>();
 
-            var cached = await cacheRepo.FindAsync(task.Url, "video", "720p");
+            var cached = await cacheRepo.FindAsync(task.Url,
+                Database.Enums.FileType.Video,
+                Database.Enums.MediaQuality.Standard); //defoult quality and type, TODO
+
             if (cached != null)
             {
                 Console.WriteLine($"[Worker {workerId}] Кэш знайдено! Відправляємо file_id");
@@ -120,8 +123,8 @@ public class DownloadWorker
                             sourceUrl: task.Url,
                             platform: task.Platform,
                             fileId: sentMessage.Video.FileId,
-                            fileType: "video", //TODO Filetype
-                            quality: "720p", //TODO Quality
+                            fileType: Database.Enums.FileType.Video, //TODO Filetype
+                            quality: Database.Enums.MediaQuality.Standard, //TODO Quality
                             fileSizeBytes: fileSize
                             //TODO videoId
                         );
