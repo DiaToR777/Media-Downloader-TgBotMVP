@@ -7,8 +7,8 @@ namespace MediaDownloaderTgBotMVP.Database.Entities
         public string SourceUrl { get; set; } = string.Empty;
         public Platform Platform { get; set; } 
         public string FileId { get; set; } = string.Empty;
-        public string FileType { get; set; } = "video";
-        public string Quality { get; set; } = "720p";
+        public FileType FileType { get; set; } = FileType.Video;
+        public MediaQuality Quality { get; set; }
         public long FileSizeBytes { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

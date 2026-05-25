@@ -24,16 +24,25 @@ namespace MediaDownloaderTgBotMVP.Database
             modelBuilder.Entity<CachedMedia>(entity =>
             {
                 entity.Property(c => c.SourceUrl).HasMaxLength(2000);
-                entity.Property(c => c.Quality).HasMaxLength(50);
-                entity.Property(c => c.FileType).HasMaxLength(50);
+
+                entity.Property(c => c.FileType)
+                    .HasConversion<int>()
+                    .HasColumnType("integer");
+
+                entity.Property(c => c.Quality)
+                    .HasConversion<int>()
+                    .HasColumnType("integer");
 
                 entity.HasIndex(c => new { c.SourceUrl, c.Quality, c.FileType });
             });
 
             modelBuilder.Entity<DownloadHistory>(entity =>
             {
-                entity.Property(h => h.Status).HasMaxLength(50);
                 entity.Property(h => h.SourceUrl).HasMaxLength(2000);
+
+                entity.Property(h => h.Status)
+                    .HasConversion<int>()
+                    .HasColumnType("integer");
 
                 entity.HasIndex(h => h.UserId);
             });

@@ -3,6 +3,7 @@ using System;
 using MediaDownloaderTgBotMVP.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MediaDownloaderTgBotMVP.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260525180129_AddEnums")]
+    partial class AddEnums
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -41,7 +44,7 @@ namespace MediaDownloaderTgBotMVP.Migrations
                     .HasColumnType("bigint");
 
                 b.Property<int>("FileType")
-                    .               HasColumnType("integer");
+                    .HasColumnType("integer");
 
                 b.Property<int>("Platform")
                     .HasColumnType("integer");
@@ -144,7 +147,7 @@ namespace MediaDownloaderTgBotMVP.Migrations
                     .IsRequired();
 
                 b.Navigation("CachedMedia");
-
+                                                                                                                            
                 b.Navigation("User");
             });
 
@@ -154,7 +157,7 @@ namespace MediaDownloaderTgBotMVP.Migrations
             });
 
             modelBuilder.Entity("MediaDownloaderTgBotMVP.Database.Entities.User", b =>
-            {
+            {                                                                                                                                                                                               
                 b.Navigation("DownloadHistories");
             });
 #pragma warning restore 612, 618
