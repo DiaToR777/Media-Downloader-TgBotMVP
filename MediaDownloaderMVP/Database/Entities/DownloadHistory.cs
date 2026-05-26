@@ -1,4 +1,6 @@
 ﻿
+using MediaDownloaderTgBotMVP.Database.Enums;
+
 namespace MediaDownloaderTgBotMVP.Database.Entities
 {
     public class DownloadHistory
@@ -7,7 +9,7 @@ namespace MediaDownloaderTgBotMVP.Database.Entities
         public int UserId { get; set; }
         public int? CachedMediaId { get; set; }
         public string SourceUrl { get; set; } = string.Empty;
-        public string Status { get; set; } = "pending";
+        public DownloadStatus Status { get; set; } = DownloadStatus.Pending;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public User User { get; set; } = null!;

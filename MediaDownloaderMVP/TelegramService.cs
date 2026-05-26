@@ -49,9 +49,12 @@ namespace MediaDownloaderTgBotMVP
 
         private async Task HandleUpdate(ITelegramBotClient bot, Update update, CancellationToken ct)
         {
-            if (update.Message?.Text is not { } text) return;
+            if (update.Message?.Text is not { } text || update.Message.From is not { } tgUser) return;
 
             var chatId = update.Message.Chat.Id;
+
+            var tgUserId = tgUser.Id;
+
             var username = update.Message.Chat.Username;
             var firstName = update.Message.Chat.FirstName;
 
@@ -59,7 +62,8 @@ namespace MediaDownloaderTgBotMVP
 
             using var scope = _scopeFactory.CreateScope();
             var userRepo = scope.ServiceProvider.GetRequiredService<UserRepository>();
-            await userRepo.GetOrCreateAsync(chatId, username, firstName);
+
+            var dbUser = await userRepo.GetOrCreateAsync(tgUserId, username, firstName);
 
             if (text == "/start")
             {
@@ -72,17 +76,17 @@ namespace MediaDownloaderTgBotMVP
             }
             else if (Uri.IsWellFormedUriString(text, UriKind.Absolute))
             {
-                await StartDownloading(chatId, text, ct);
+                await StartDownloading(dbUser.Id, chatId, text, ct);
             }
         }
 
-        private async Task StartDownloading(long chatId, string url, CancellationToken ct)
+        private async Task StartDownloading(int userId, long chatId, string url, CancellationToken ct)
         {
             Message progressMessage = await _bot.SendMessage(chatId, "⏳ Додано в чергу завантаження...", cancellationToken: ct);
 
             var mediaPlatform = PlatformDetector.Detect(url);
 
-            var task = new DownloadTask(chatId, url, progressMessage, mediaPlatform);
+            var task = new DownloadTask(userId, chatId, url, progressMessage, mediaPlatform);
 
             if (!_downloadWorker.Writer.TryWrite(task))
             {

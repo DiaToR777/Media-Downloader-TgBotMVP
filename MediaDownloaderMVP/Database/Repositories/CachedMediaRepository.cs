@@ -12,7 +12,7 @@ namespace MediaDownloaderTgBotMVP.Database.Repositories
             _db = db;
         }
 
-        public async Task<CachedMedia?> FindAsync(string sourceUrl, string fileType, string quality)
+        public async Task<CachedMedia?> FindAsync(string sourceUrl, Enums.FileType fileType, MediaQuality quality)
         {
             return await _db.CachedMedias
                 .FirstOrDefaultAsync(c =>
@@ -21,7 +21,7 @@ namespace MediaDownloaderTgBotMVP.Database.Repositories
                     c.Quality == quality);
         }
 
-        public async Task SaveAsync(string sourceUrl, Platform platform, string fileId, string fileType, string quality, long fileSizeBytes)
+        public async Task<int> SaveAsync(string sourceUrl, Platform platform, string fileId, Enums.FileType fileType, MediaQuality quality, long fileSizeBytes)
         {
             var cached = new CachedMedia
             {
@@ -34,6 +34,8 @@ namespace MediaDownloaderTgBotMVP.Database.Repositories
             };
             _db.CachedMedias.Add(cached);
             await _db.SaveChangesAsync();
+
+            return cached.Id;
         }
 
     }

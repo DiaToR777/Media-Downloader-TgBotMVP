@@ -3,4 +3,11 @@ using MediaDownloaderTgBotMVP.Database.Enums;
 
 namespace MediaDownloaderTgBotMVP;
 
-public record DownloadTask(long ChatId, string Url, Message ProgressMessage, Platform Platform);
+public record DownloadTask
+    (
+    int DbUserId,
+    long ChatId,    
+    string Url,
+    Message ProgressMessage,
+    Platform Platform
+    );
