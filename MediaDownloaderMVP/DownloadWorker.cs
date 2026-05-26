@@ -1,4 +1,5 @@
-﻿using MediaDownloaderTgBotMVP.Database.Repositories;
+﻿using MediaDownloaderTgBotMVP.Database.Enums;
+using MediaDownloaderTgBotMVP.Database.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 using System.Threading.Channels;
@@ -52,10 +53,13 @@ public class DownloadWorker
 
             using var scope = _scopeFactory.CreateScope();
             var cacheRepo = scope.ServiceProvider.GetRequiredService<CachedMediaRepository>();
+            var historyRepo = scope.ServiceProvider.GetRequiredService<DownloadHistoryRepository>();
+
+            var history = await historyRepo.CreateAsync(task.DbUserId, task.Url, ct);
 
             var cached = await cacheRepo.FindAsync(task.Url,
-                Database.Enums.FileType.Video,
-                Database.Enums.MediaQuality.Standard); //defoult quality and type, TODO
+                FileType.Video,
+                MediaQuality.Standard); // TODO: default quality and type
 
             if (cached != null)
             {
@@ -63,6 +67,8 @@ public class DownloadWorker
                 await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "📤 Надсилаю відео...", cancellationToken: ct);
                 await _bot.SendVideo(task.ChatId, cached.FileId, cancellationToken: ct);
                 await _bot.DeleteMessage(task.ChatId, task.ProgressMessage.MessageId, cancellationToken: ct);
+
+                await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Done, ct, cached.Id);
                 continue;
             }
 
@@ -79,7 +85,7 @@ public class DownloadWorker
                     .WithUrl(task.Url)
                     .WithFormat("mp4")
                     .WithOutputPath(taskFolder)
-                    .Build();
+                    .Build(); // TODO: format...
 
                 using (var process = new Process { StartInfo = psi })
                 {
@@ -119,17 +125,18 @@ public class DownloadWorker
 
                     if (sentMessage.Video?.FileId != null)
                     {
-                        await cacheRepo.SaveAsync(
+                        int newCacheId = await cacheRepo.SaveAsync(
                             sourceUrl: task.Url,
                             platform: task.Platform,
                             fileId: sentMessage.Video.FileId,
-                            fileType: Database.Enums.FileType.Video, //TODO Filetype
-                            quality: Database.Enums.MediaQuality.Standard, //TODO Quality
+                            fileType: FileType.Video,
+                            quality: MediaQuality.Standard,
                             fileSizeBytes: fileSize
-                            //TODO videoId
                         );
-                        Console.WriteLine($"[Worker {workerId}] Збережено в кэш: {sentMessage.Video.FileId}");
 
+                        await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Done, ct, newCacheId);
+
+                        Console.WriteLine($"[Worker {workerId}] Збережено в кэш: {sentMessage.Video.FileId}");
                     }
                 }
 
@@ -137,12 +144,22 @@ public class DownloadWorker
             }
             catch (OperationCanceledException)
             {
+                await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Failed, ct);
                 try { await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "⏱ Час очікування вийшов.", cancellationToken: ct); } catch { }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[Worker {workerId}] ❌ {ex.Message}");
-                try { await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, $"❌ Помилка: {ex.Message}", cancellationToken: ct); } catch { }
+
+                await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Failed, ct);
+                try
+                {
+                    await _bot.EditMessageText(task.ChatId,
+                        task.ProgressMessage.MessageId,
+                        $"❌ Помилка: {ex.Message}",
+                        cancellationToken: ct);
+                }
+                catch { }
             }
             finally
             {

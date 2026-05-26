@@ -6,7 +6,7 @@
         public long TelegramId { get; set; }
         public string? Username { get; set; }
         public string? FirstName { get; set; }
-        public string SubscriptionTier { get; set; } = "free"; 
+        public string SubscriptionTier { get; set; } = "free"; //TODO
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime LastActiveAt { get; set; } = DateTime.UtcNow;
 

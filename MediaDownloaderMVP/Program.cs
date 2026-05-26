@@ -27,8 +27,10 @@ services.AddSingleton<DownloadWorker>(provider =>
 });
 
 services.AddSingleton<TelegramService>();
+
 services.AddScoped<UserRepository>();
 services.AddScoped<CachedMediaRepository>();
+services.AddScoped<DownloadHistoryRepository>();
 
 var provider = services.BuildServiceProvider();
 
