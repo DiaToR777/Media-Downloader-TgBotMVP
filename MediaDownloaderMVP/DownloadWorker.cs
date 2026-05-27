@@ -71,6 +71,7 @@ public class DownloadWorker
                 await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Done, ct, cached.Id);
                 continue;
             }
+            await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Pending, ct);
 
             string taskFolder = Path.Combine(_tempFolder, Guid.NewGuid().ToString("N"));
 
