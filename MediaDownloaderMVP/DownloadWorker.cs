@@ -1,6 +1,7 @@
 ﻿using MediaDownloaderTgBotMVP.Database.Enums;
 using MediaDownloaderTgBotMVP.Database.Repositories;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Telegram.Bot;
@@ -8,7 +9,7 @@ using Telegram.Bot.Types;
 
 namespace MediaDownloaderTgBotMVP;
 
-public class DownloadWorker
+public class DownloadWorker : BackgroundService
 {
     private readonly Channel<DownloadTask> _queue;
     private readonly ITelegramBotClient _bot;
@@ -33,17 +34,23 @@ public class DownloadWorker
         });
     }
 
-    public ChannelWriter<DownloadTask> Writer => _queue.Writer;
-
-    public void Start(CancellationToken ct)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var workers = new Task[_maxConcurrentDownloads];
+
         for (int i = 0; i < _maxConcurrentDownloads; i++)
         {
             int workerId = i + 1;
-            Task.Run(() => ProcessQueueAsync(workerId, ct), ct);
+            workers[i] = ProcessQueueAsync(workerId, stoppingToken);
         }
-        Console.WriteLine($"✓ Запущено пул воркерів ({_maxConcurrentDownloads} паралельних потоків)");
+
+        Console.WriteLine($"✓ [BackgroundService] Запущено пул воркерів ({_maxConcurrentDownloads} паралельних потоків)");
+
+        return Task.WhenAll(workers);
     }
+
+    public ChannelWriter<DownloadTask> Writer => _queue.Writer;
+
 
     private async Task ProcessQueueAsync(int workerId, CancellationToken ct)
     {
