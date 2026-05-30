@@ -1,5 +1,7 @@
 ﻿using MediaDownloaderTgBotMVP.Database.Enums;
 using MediaDownloaderTgBotMVP.Database.Repositories;
+using MediaDownloaderTgBotMVP.YtDlp.Builders;
+using MediaDownloaderTgBotMVP.YtDlp.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System.Diagnostics;
@@ -16,12 +18,14 @@ public class DownloadWorker : BackgroundService
     private readonly string _tempFolder;
     private readonly int _maxConcurrentDownloads = 3;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly YtDlpMetadataService _metadataService;
 
-    public DownloadWorker(ITelegramBotClient bot, string tempFolder, IServiceScopeFactory scopeFactory)
+    public DownloadWorker(ITelegramBotClient bot, string tempFolder, IServiceScopeFactory scopeFactory, YtDlpMetadataService metadataService)
     {
         _bot = bot;
         _tempFolder = tempFolder;
         _scopeFactory = scopeFactory;
+        _metadataService = metadataService;
 
         if (!Directory.Exists(_tempFolder))
             Directory.CreateDirectory(_tempFolder);
@@ -80,6 +84,57 @@ public class DownloadWorker : BackgroundService
             }
             await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Pending, ct);
 
+            await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "🔍 Аналізую посилання...", cancellationToken: ct);
+
+            var metadata = await _metadataService.GetMetadataAsync(task.Url, ct);
+            if (metadata == null)
+            {
+                Console.WriteLine($"[Worker {workerId}] ⚠️ Не вдалося отримати метадані для {task.Url}");
+
+                await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Failed, ct);
+                try
+                {
+                    await _bot.EditMessageText(
+                        task.ChatId,
+                        task.ProgressMessage.MessageId,
+                        "❌ Не вдалося отримати інформацію про відео. " +
+                        "Можливо, посилання бите або сервіс тимчасово недоступний.",
+                        cancellationToken: ct
+                    );
+                }
+                catch { }
+
+                continue;
+            }
+
+            long fileSizeInBytes = metadata.GetFilesize();
+            if (fileSizeInBytes > 50 * 1024 * 1024)
+            {
+                double fileSizeMb = Math.Round((double)fileSizeInBytes / 1024 / 1024, 2);
+
+
+                Console.WriteLine($"[Worker {workerId}] ⚠️ Відео занадто велике ({fileSizeMb} MB). {task.Url}");
+
+                //TODO Compression 
+                await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Failed, ct);
+
+                try
+                {
+                    await _bot.EditMessageText(
+                        task.ChatId,
+                        task.ProgressMessage.MessageId,
+                        $"❌ Відео занадто велике ({fileSizeMb} MB). " +
+                        $"Максимальний розмір — 50 MB.",
+                        cancellationToken: ct
+                    );
+                }
+                catch { }
+
+                continue;
+            }
+
+            await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, $"⏳ Завантажую відео: {metadata.Title}...", cancellationToken: ct);
+
             string taskFolder = Path.Combine(_tempFolder, Guid.NewGuid().ToString("N"));
 
             try
@@ -115,40 +170,76 @@ public class DownloadWorker : BackgroundService
 
                 var filePath = Directory.GetFiles(taskFolder).FirstOrDefault();
                 if (filePath == null)
-                    throw new FileNotFoundException("Файл не знайдено.");
+                {
+                    await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Failed, ct);
 
-                var fileSize = new FileInfo(filePath).Length;
+                    try
+                    {
+                        await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "❌ Не вдалося знайти завантажений файл.", cancellationToken: ct);
+                    }
+                    catch { }
+
+
+                    Console.WriteLine($"[Worker {workerId}] Файл не знайдено.");
+                    continue;
+                }
+
+                long fileSize = new FileInfo(filePath).Length;
                 if (fileSize > 50 * 1024 * 1024)
-                    throw new Exception($"Відео занадто велике ({fileSize / 1024 / 1024}MB). Максимум 50MB.");
+                {
+                    double fileSizeMb = Math.Round((double)fileSize / 1024 / 1024, 2);
 
+                    await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Failed, ct);
+
+
+                    Console.WriteLine($"[Worker {workerId}] Скачаний файл виявився занадто великим ({fileSizeMb}MB).");
+
+                    try
+                    {
+                        await _bot.EditMessageText(
+                            task.ChatId,
+                            task.ProgressMessage.MessageId, $"❌ Відео занадто велике ({fileSizeInBytes / 1024 / 1024} MB). " +
+                            $"Максимальний розмір — 50 MB.", cancellationToken: ct);
+
+                    }
+                    catch { }
+
+                    continue;
+                }
                 await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "📤 Надсилаю відео...", cancellationToken: ct);
 
-                using (var stream = File.OpenRead(filePath))
+                Message sentMessage;
+
+                using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
                 {
-                    var sentMessage = await _bot.SendVideo(
+                    sentMessage = await _bot.SendVideo(
                         chatId: task.ChatId,
                         video: InputFile.FromStream(stream, Path.GetFileName(filePath)),
                         cancellationToken: ct
                     );
-
-                    if (sentMessage.Video?.FileId != null)
-                    {
-                        int newCacheId = await cacheRepo.SaveAsync(
-                            sourceUrl: task.Url,
-                            platform: task.Platform,
-                            fileId: sentMessage.Video.FileId,
-                            fileType: FileType.Video,
-                            quality: MediaQuality.Standard,
-                            fileSizeBytes: fileSize
-                        );
-
-                        await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Done, ct, newCacheId);
-
-                        Console.WriteLine($"[Worker {workerId}] Збережено в кэш: {sentMessage.Video.FileId}");
-                    }
                 }
 
-                await _bot.DeleteMessage(task.ChatId, task.ProgressMessage.MessageId, cancellationToken: ct);
+                if (sentMessage.Video?.FileId != null)
+                {
+                    int newCacheId = await cacheRepo.SaveAsync(
+                        sourceUrl: task.Url,
+                        platform: task.Platform,
+                        fileId: sentMessage.Video.FileId,
+                        fileType: FileType.Video,
+                        quality: MediaQuality.Standard,
+                        fileSizeBytes: fileSize
+                    );
+
+                    await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Done, ct, newCacheId);
+
+                    Console.WriteLine($"[Worker {workerId}] Збережено в кэш: {sentMessage.Video.FileId}");
+                }
+                else
+                {
+                    await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Done, ct);
+                }
+
+                try { await _bot.DeleteMessage(task.ChatId, task.ProgressMessage.MessageId, cancellationToken: ct); } catch { }
             }
             catch (OperationCanceledException)
             {

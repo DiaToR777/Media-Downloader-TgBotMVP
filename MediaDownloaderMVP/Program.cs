@@ -1,6 +1,7 @@
 ﻿using MediaDownloaderTgBotMVP;
 using MediaDownloaderTgBotMVP.Database;
 using MediaDownloaderTgBotMVP.Database.Repositories;
+using MediaDownloaderTgBotMVP.YtDlp.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -19,6 +20,8 @@ var host = Host.CreateDefaultBuilder(args)
             options.UseNpgsql(connectionString));
 
         services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(token));
+        services.AddSingleton<YtDlpMetadataService>();
+
 
         services.AddScoped<UserRepository>();
         services.AddScoped<CachedMediaRepository>();
@@ -29,7 +32,8 @@ var host = Host.CreateDefaultBuilder(args)
             var bot = provider.GetRequiredService<ITelegramBotClient>();
             var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
             var tempFolder = Path.Combine(AppContext.BaseDirectory, "downloads");
-            return new DownloadWorker(bot, tempFolder, scopeFactory);
+            var metadataService = provider.GetRequiredService<YtDlpMetadataService>();
+            return new DownloadWorker(bot, tempFolder, scopeFactory, metadataService);
         });
 
         services.AddHostedService(provider => provider.GetRequiredService<DownloadWorker>());
