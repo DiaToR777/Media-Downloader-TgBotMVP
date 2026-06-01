@@ -1,6 +1,7 @@
 ﻿using MediaDownloaderTgBotMVP.Database.Entities;
 using MediaDownloaderTgBotMVP.Database.Enums;
 using Microsoft.EntityFrameworkCore;
+using System.Runtime.InteropServices;
 
 namespace MediaDownloaderTgBotMVP.Database.Repositories
 {
@@ -21,11 +22,12 @@ namespace MediaDownloaderTgBotMVP.Database.Repositories
                     c.Quality == quality);
         }
 
-        public async Task<int> SaveAsync(string sourceUrl, Platform platform, string fileId, Enums.FileType fileType, MediaQuality quality, long fileSizeBytes)
+        public async Task<int> SaveAsync(string sourceUrl, string videoId, Platform platform, string fileId, Enums.FileType fileType, MediaQuality quality, long fileSizeBytes)
         {
             var cached = new CachedMedia
             {
                 SourceUrl = sourceUrl,
+                VideoId = videoId,
                 Platform = platform,
                 FileId = fileId,
                 FileType = fileType,
@@ -38,6 +40,13 @@ namespace MediaDownloaderTgBotMVP.Database.Repositories
             return cached.Id;
         }
 
+        public async Task<CachedMedia?> GetByVideoIdAsync(Platform platform, string videoId, FileType fileType, MediaQuality quality, CancellationToken ct)
+        {
+            return await _db.CachedMedias.FirstOrDefaultAsync(c =>
+                c.Platform == platform &&
+                c.VideoId == videoId &&
+                c.FileType == fileType &&
+                c.Quality == quality, ct);
+        }
     }
-}
-
+}   

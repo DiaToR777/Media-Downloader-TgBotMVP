@@ -1,5 +1,4 @@
 ﻿using MediaDownloaderTgBotMVP.Database.Repositories;
-using MediaDownloaderTgBotMVP.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
@@ -82,9 +81,7 @@ namespace MediaDownloaderTgBotMVP
         {
             Message progressMessage = await _bot.SendMessage(chatId, "⏳ Додано в чергу завантаження...", cancellationToken: ct);
 
-            var mediaPlatform = PlatformDetector.Detect(url);
-
-            var task = new DownloadTask(userId, chatId, url, progressMessage, mediaPlatform);
+            var task = new DownloadTask(userId, chatId, url, progressMessage);
 
             if (!_downloadWorker.Writer.TryWrite(task))
             {
