@@ -1,5 +1,5 @@
 ﻿namespace MediaDownloaderTgBotMVP.Database.Enums;
-public enum Platform
+public enum     Platform
 {
     Unknown = 0,
     TikTok = 1,

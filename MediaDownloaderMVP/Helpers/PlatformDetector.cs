@@ -5,43 +5,72 @@ namespace MediaDownloaderTgBotMVP.Helpers;
 
 public static class PlatformDetector
 {
-    private static readonly Regex TiktokRegex = new(
-                @"^(?:https?:\/\/)?(?:www\.|m\.)?(?:vm|vt)\.tiktok\.com\/([\w-]+)|(?:www\.)?tiktok\.com\/@[\w.-]+\/video\/(\d+)",
-                RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex TikTokLongRegex = new(@"/video/(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex TikTokShortPathRegex = new(@"/t/([a-zA-Z0-9]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    private static readonly Regex YoutubeRegex = new(
-            @"^(?:https?:\/\/)?(?:www\.|m\.|music\.)?(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/|youtube-nocookie\.com\/))([\w-]{11})",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-    private static readonly Regex InstagramRegex = new(@"instagram\.com", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex FacebookRegex = new(@"facebook\.com|fb\.watch", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex TwitterRegex = new(@"twitter\.com|x\.com", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-    public static (Platform Platform, string? VideoId) Parse(string url)
+    private static readonly Regex YouTubeStandardRegex = new(@"[?&]v=([^&?#]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex YouTubeShortsRegex = new(@"/shorts/([^/?#]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex YouTubeLiveRegex = new(@"/live/([^/?#]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    public static ParseResult Parse(string url)
     {
         if (string.IsNullOrWhiteSpace(url))
-            return (Platform.Unknown, null);
+            return new ParseResult(Platform.Unknown, null, false);
 
-        var ytMatch = YoutubeRegex.Match(url);
-        if (ytMatch.Success)
+        string lowerUrl = url.ToLowerInvariant();
+
+        if (lowerUrl.Contains("tiktok.com") || lowerUrl.Contains("douyin.com"))
         {
-            return (Platform.YouTube, ytMatch.Groups[1].Value);
+            if (lowerUrl.Contains("vt.tiktok.com") ||
+                lowerUrl.Contains("vm.tiktok.com") ||
+                lowerUrl.Contains("v.douyin.com"))
+            {
+                return new ParseResult(Platform.TikTok, null, isShortUrl: true);
+            }
+
+            if (TikTokShortPathRegex.IsMatch(url))
+            {
+                return new ParseResult(Platform.TikTok, null, isShortUrl: true);
+            }
+
+            var longMatch = TikTokLongRegex.Match(url);
+            if (longMatch.Success)
+            {
+                return new ParseResult(Platform.TikTok, longMatch.Groups[1].Value, isShortUrl: false);
+            }
+
+            return new ParseResult(Platform.TikTok, null, isShortUrl: false);
         }
 
-        var ttMatch = TiktokRegex.Match(url);
-        if (ttMatch.Success)
+        if (lowerUrl.Contains("youtube.com") || lowerUrl.Contains("youtu.be"))
         {
-            string? videoId = !string.IsNullOrEmpty(ttMatch.Groups[2].Value)
-                ? ttMatch.Groups[2].Value
-                : (!string.IsNullOrEmpty(ttMatch.Groups[1].Value) ? ttMatch.Groups[1].Value : null);
+            if (lowerUrl.Contains("youtu.be"))
+            {
+                return new ParseResult(Platform.YouTube, null, isShortUrl: true);
+            }
 
-            return (Platform.TikTok, videoId);
+            var stdMatch = YouTubeStandardRegex.Match(url);
+            if (stdMatch.Success)
+            {
+                return new ParseResult(Platform.YouTube, stdMatch.Groups[1].Value, isShortUrl: false);
+            }
+
+            var shortsMatch = YouTubeShortsRegex.Match(url);
+            if (shortsMatch.Success)
+            {
+                return new ParseResult(Platform.YouTube, shortsMatch.Groups[1].Value, isShortUrl: false);
+            }
+
+            var liveMatch = YouTubeLiveRegex.Match(url);
+            if (liveMatch.Success)
+            {
+                return new ParseResult(Platform.YouTube, liveMatch.Groups[1].Value, isShortUrl: false);
+            }
+
+            return new ParseResult(Platform.YouTube, null, isShortUrl: false);
         }
 
-        if (InstagramRegex.IsMatch(url)) return (Platform.Instagram, null);
-        if (FacebookRegex.IsMatch(url)) return (Platform.Facebook, null);
-        if (TwitterRegex.IsMatch(url)) return (Platform.Twitter, null);
-
-        return (Platform.Unknown, null);
+        return new ParseResult(Platform.Unknown, null, false);
+        //TODO another platforms
     }
+
 }

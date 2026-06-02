@@ -69,9 +69,10 @@ public class DownloadWorker : BackgroundService
 
             var history = await historyRepo.CreateAsync(task.DbUserId, task.Url, ct);
 
-            var (platform, quickVideoId) = PlatformDetector.Parse(task.Url);
+            string currentUrl = task.Url;
+            var parsedUrl = PlatformDetector.Parse(task.Url);
 
-            if (platform == Platform.Unknown)
+            if (parsedUrl.Platform == Platform.Unknown)
             {
                 Console.WriteLine($"[Worker {workerId}] ⚠️ Невідома платформа для {task.Url}");
                 await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Failed, ct);
@@ -83,13 +84,23 @@ public class DownloadWorker : BackgroundService
                 continue;
             }
 
-            if (!string.IsNullOrEmpty(quickVideoId))
+            if (parsedUrl.IsShortUrl)
             {
-                var cached = await cacheRepo.GetByVideoIdAsync(platform, quickVideoId, FileType.Video, MediaQuality.Standard, ct);
+                Console.WriteLine($"[Worker {workerId}] ⚙️ Виявлено коротке посилання {parsedUrl.Platform}. Розгортаємо...");
+                currentUrl = await ResolveRedirectHelper.ResolveRedirectAsync(currentUrl, ct);
+
+                // Парсим длинную ссылку заново, чтобы извлечь реальный ID видео
+                parsedUrl = PlatformDetector.Parse(currentUrl);
+            }
+
+            string? finalVideoId = parsedUrl.VideoId;
+
+            if (!string.IsNullOrEmpty(finalVideoId))
+            {
+                var cached = await cacheRepo.GetByVideoIdAsync(parsedUrl.Platform, finalVideoId, FileType.Video, MediaQuality.Standard, ct);
                 if (cached != null)
                 {
-                    Console.WriteLine($"[Worker {workerId}] Кэш знайдено! Відправляємо file_id");
-
+                    Console.WriteLine($"[Worker {workerId}] 🚀 Швидкий кэш знайдено! Відправляємо file_id миттєво.");
                     await SendCachedVideoAsync(task, cached.FileId, history.Id, cached.Id, historyRepo, ct);
                     continue;
                 }
@@ -97,9 +108,10 @@ public class DownloadWorker : BackgroundService
 
             await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Pending, ct);
 
-            await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "🔍 Аналізую посилання...", cancellationToken: ct);
+            await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, 
+                "🔍 Аналізую посилання...", cancellationToken: ct);
 
-            var metadata = await _metadataService.GetMetadataAsync(task.Url, ct);
+            var metadata = await _metadataService.GetMetadataAsync(currentUrl, ct);
             if (metadata == null)
             {
                 Console.WriteLine($"[Worker {workerId}] ⚠️ Не вдалося отримати метадані для {task.Url}");
@@ -121,9 +133,9 @@ public class DownloadWorker : BackgroundService
 
             string strictVideoId = metadata.Id;
 
-            if (strictVideoId != quickVideoId)
+            if (strictVideoId != finalVideoId)
             {
-                var cached = await cacheRepo.GetByVideoIdAsync(platform, strictVideoId, FileType.Video, MediaQuality.Standard, ct);
+                var cached = await cacheRepo.GetByVideoIdAsync(parsedUrl.Platform, strictVideoId, FileType.Video, MediaQuality.Standard, ct);
                 if (cached != null)
                 {
                     Console.WriteLine($"[Worker {workerId}] Строгий кэш знайдено після аналізу метаданих!");
@@ -136,7 +148,6 @@ public class DownloadWorker : BackgroundService
             if (fileSizeInBytes > 50 * 1024 * 1024)
             {
                 double fileSizeMb = Math.Round((double)fileSizeInBytes / 1024 / 1024, 2);
-
 
                 Console.WriteLine($"[Worker {workerId}] ⚠️ Відео занадто велике ({fileSizeMb} MB). {task.Url}");
 
@@ -168,9 +179,8 @@ public class DownloadWorker : BackgroundService
 
                 using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-
                 var psi = new YtDlpPsiBuilder()
-                    .WithUrl(task.Url)
+                    .WithUrl(currentUrl)
                     .WithFormat("mp4")
                     .WithOutputPath(taskFolder)
                     .Build(); // TODO: format...
@@ -205,7 +215,6 @@ public class DownloadWorker : BackgroundService
                     }
                     catch { }
 
-
                     Console.WriteLine($"[Worker {workerId}] Файл не знайдено.");
                     continue;
                 }
@@ -216,7 +225,6 @@ public class DownloadWorker : BackgroundService
                     double fileSizeMb = Math.Round((double)fileSize / 1024 / 1024, 2);
 
                     await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Failed, ct);
-
 
                     Console.WriteLine($"[Worker {workerId}] Скачаний файл виявився занадто великим ({fileSizeMb}MB).");
 
@@ -248,9 +256,9 @@ public class DownloadWorker : BackgroundService
                 if (sentMessage.Video?.FileId != null)
                 {
                     int newCacheId = await cacheRepo.SaveAsync(
-                                            sourceUrl: task.Url,
+                                            sourceUrl: currentUrl,
                                             videoId: strictVideoId,
-                                            platform: platform,
+                                            platform: parsedUrl.Platform,
                                             fileId: sentMessage.Video.FileId,
                                             fileType: FileType.Video,
                                             quality: MediaQuality.Standard,
@@ -297,12 +305,22 @@ public class DownloadWorker : BackgroundService
 
     private async Task SendCachedVideoAsync(DownloadTask task, string fileId, int historyId, int cacheId, DownloadHistoryRepository historyRepo, CancellationToken ct)
     {
-        await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "📤 Надсилаю відео...", cancellationToken: ct);
+        try
+        {
+            await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, 
+                "📤 Надсилаю відео...", cancellationToken: ct);
+        }
+        catch { }
+
         await _bot.SendVideo(task.ChatId, fileId, cancellationToken: ct);
-        try { await _bot.DeleteMessage(task.ChatId, task.ProgressMessage.MessageId, cancellationToken: ct); } catch { }
+
+        try
+        {
+            await _bot.DeleteMessage(task.ChatId, 
+                task.ProgressMessage.MessageId, cancellationToken: ct);
+        }
+        catch { }
 
         await historyRepo.UpdateStatusAsync(historyId, DownloadStatus.Done, ct, cacheId);
     }
-
-
 }
