@@ -8,6 +8,7 @@ namespace MediaDownloaderTgBotMVP.Database
         public DbSet<User> Users { get; set; }
         public DbSet<CachedMedia> CachedMedias { get; set; }
         public DbSet<DownloadHistory> DownloadHistories { get; set; }
+        public DbSet<PendingDownload> PendingDownloads { get; set; }
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -48,6 +49,17 @@ namespace MediaDownloaderTgBotMVP.Database
                     .HasColumnType("integer");
 
                 entity.HasIndex(h => h.UserId);
+            });
+
+            modelBuilder.Entity<PendingDownload>(e =>
+            {
+                e.HasKey(x => x.Id);
+                e.HasIndex(x => new { x.ChatId, x.MessageId });
+                e.HasIndex(x => x.Status);
+                e.HasIndex(x => x.ExpiresAt);
+                e.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId);
             });
         }
     }
