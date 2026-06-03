@@ -1,5 +1,4 @@
 ﻿using MediaDownloaderTgBotMVP.Database.Repositories;
-using MediaDownloaderTgBotMVP.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
@@ -10,14 +9,14 @@ namespace MediaDownloaderTgBotMVP
 {
     public class TelegramService
     {
-        private TelegramBotClient _bot;
+        private readonly ITelegramBotClient _bot;
         private readonly long _adminId;
 
         private readonly DownloadWorker _downloadWorker;
         private readonly IServiceScopeFactory _scopeFactory;
         public TelegramService(DownloadWorker downloadWorker, ITelegramBotClient bot, IServiceScopeFactory scopeFactory)
         {
-            _bot = (TelegramBotClient)bot;
+            _bot = bot;
 
             var adminIdStr = Environment.GetEnvironmentVariable("ADMIN_TG_ID");
             if (string.IsNullOrEmpty(adminIdStr))
@@ -35,8 +34,6 @@ namespace MediaDownloaderTgBotMVP
 
             var cts = new CancellationTokenSource();
 
-            _downloadWorker.Start(cts.Token);
-
             _bot.StartReceiving(
                 HandleUpdate,
                 HandleError,
@@ -51,12 +48,12 @@ namespace MediaDownloaderTgBotMVP
         {
             if (update.Message?.Text is not { } text || update.Message.From is not { } tgUser) return;
 
-            var chatId = update.Message.Chat.Id;
-
             var tgUserId = tgUser.Id;
 
-            var username = update.Message.Chat.Username;
-            var firstName = update.Message.Chat.FirstName;
+            var chatId = update.Message.Chat.Id;
+
+            var username = tgUser.Username;
+            var firstName = tgUser.FirstName;
 
             Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] {update.Message.Chat.FirstName ?? "User"}, userId {{ {update.Message.Chat.Id} }} username {{ {update.Message.Chat.Username ?? "null"} }} : {text}");
 
@@ -84,9 +81,7 @@ namespace MediaDownloaderTgBotMVP
         {
             Message progressMessage = await _bot.SendMessage(chatId, "⏳ Додано в чергу завантаження...", cancellationToken: ct);
 
-            var mediaPlatform = PlatformDetector.Detect(url);
-
-            var task = new DownloadTask(userId, chatId, url, progressMessage, mediaPlatform);
+            var task = new DownloadTask(userId, chatId, url, progressMessage);
 
             if (!_downloadWorker.Writer.TryWrite(task))
             {

@@ -24,6 +24,7 @@ namespace MediaDownloaderTgBotMVP.Database
             modelBuilder.Entity<CachedMedia>(entity =>
             {
                 entity.Property(c => c.SourceUrl).HasMaxLength(2000);
+                entity.Property(c => c.VideoId).HasMaxLength(100).IsRequired();
 
                 entity.Property(c => c.FileType)
                     .HasConversion<int>()
@@ -33,7 +34,9 @@ namespace MediaDownloaderTgBotMVP.Database
                     .HasConversion<int>()
                     .HasColumnType("integer");
 
-                entity.HasIndex(c => new { c.SourceUrl, c.Quality, c.FileType });
+                entity.HasIndex(c => new { c.Platform, c.VideoId, c.FileType, c.Quality })
+                    .HasDatabaseName("IX_CachedMedias_Composite_Lookup")
+                    .IsUnique();
             });
 
             modelBuilder.Entity<DownloadHistory>(entity =>
