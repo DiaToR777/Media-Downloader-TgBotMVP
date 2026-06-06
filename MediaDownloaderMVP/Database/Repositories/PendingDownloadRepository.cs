@@ -33,11 +33,12 @@ namespace MediaDownloaderTgBotMVP.Database.Repositories
                 .FirstOrDefaultAsync(p => p.ChatId == chatId && p.MessageId == messageId, ct);
         }
 
-        public async Task UpdateAsync(PendingDownload pending, CancellationToken ct = default)
+        public async Task<PendingDownload?> GetAsync(int id, CancellationToken ct = default)
         {
-            _db.PendingDownloads.Update(pending);
-            await _db.SaveChangesAsync(ct);
+            return await _db.PendingDownloads.FindAsync([id], ct);
         }
+
+        public async Task UpdateAsync(CancellationToken ct) => await _db.SaveChangesAsync(ct); //only with tracked entities
 
         public async Task DeleteAsync(int id, CancellationToken ct = default)
         {
