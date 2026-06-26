@@ -1,4 +1,5 @@
-﻿using MediaDownloaderTgBotMVP.Database.Repositories;
+﻿using MediaDownloaderTgBotMVP.Database.Enums;
+using MediaDownloaderTgBotMVP.Database.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
@@ -37,7 +38,10 @@ namespace MediaDownloaderTgBotMVP
             _bot.StartReceiving(
                 HandleUpdate,
                 HandleError,
-                new ReceiverOptions { AllowedUpdates = Array.Empty<UpdateType>() },
+                new ReceiverOptions
+                {
+                    AllowedUpdates = new[] { UpdateType.Message, UpdateType.CallbackQuery }
+                },
                 cancellationToken: cts.Token
             );
 
@@ -46,6 +50,12 @@ namespace MediaDownloaderTgBotMVP
 
         private async Task HandleUpdate(ITelegramBotClient bot, Update update, CancellationToken ct)
         {
+            if (update.CallbackQuery is { } callbackQuery)
+            {
+                await HandleCallbackQuery(callbackQuery, ct);
+                return;
+            }
+
             if (update.Message?.Text is not { } text || update.Message.From is not { } tgUser) return;
 
             var tgUserId = tgUser.Id;
@@ -81,12 +91,57 @@ namespace MediaDownloaderTgBotMVP
         {
             Message progressMessage = await _bot.SendMessage(chatId, "⏳ Додано в чергу завантаження...", cancellationToken: ct);
 
-            var task = new DownloadTask(userId, chatId, url, progressMessage);
+            using var scope = _scopeFactory.CreateScope();
+            var pendingRepo = scope.ServiceProvider.GetRequiredService<PendingDownloadRepository>();
+
+            var pending = await pendingRepo.CreateAsync(userId, chatId, progressMessage.MessageId, url,  ct);
+
+            var task = new DownloadTask(userId, chatId, url, new MessageInfo( progressMessage.Id, chatId), pending.Id, pending.ChosenFormat);
 
             if (!_downloadWorker.Writer.TryWrite(task))
             {
+                Console.WriteLine("❌ Черга переповнена, спробуйте пізніше.");
                 await _bot.EditMessageText(chatId, progressMessage.MessageId, "❌ Черга переповнена, спробуйте пізніше.", cancellationToken: ct);
+                await pendingRepo.DeleteAsync(pending.Id, ct);
             }
+        }
+
+        private async Task HandleCallbackQuery(CallbackQuery callbackQuery, CancellationToken ct)
+        {
+            // data формат: "dl:video:123" или "dl:audio:123"
+            var data = callbackQuery.Data;
+            if (data == null || !data.StartsWith("dl:")) return;
+
+            var parts = data.Split(':');
+            if (parts.Length != 3 || !int.TryParse(parts[2], out int pendingId)) return;
+
+            var formatStr = parts[1]; 
+
+            var chatId = callbackQuery.Message!.Chat.Id;
+            int messageId = callbackQuery.Message.MessageId;
+
+            await _bot.AnswerCallbackQuery(callbackQuery.Id, cancellationToken: ct);
+
+            using var scope = _scopeFactory.CreateScope();
+            var pendingRepo = scope.ServiceProvider.GetRequiredService<PendingDownloadRepository>();
+
+            var pending = await pendingRepo.GetAsync(pendingId, ct);
+            if (pending == null || pending.Status != PendingDownloadStatus.AwaitingChoice)
+            {
+                await _bot.SendMessage(chatId, "❌ Сесія застаріла, надішліть посилання ще раз.", cancellationToken: ct);
+                return;
+            }
+
+            pending.ChosenFormat = formatStr == "audio" ? Database.Enums.FileType.Audio : Database.Enums.FileType.Video;
+            pending.Status = PendingDownloadStatus.Downloading;
+            await pendingRepo.UpdateAsync(ct);
+
+            var progressMessage = await _bot.EditMessageText(chatId, messageId, "⏳ Завантажую медіа, зачекайте...", cancellationToken: ct); 
+
+            var task = new DownloadTask(pending.UserId, chatId, pending.Url, new MessageInfo(messageId, chatId), pending.Id, pending.ChosenFormat);
+
+            if (!_downloadWorker.Writer.TryWrite(task))
+                await _bot.EditMessageText(chatId, progressMessage.MessageId, "❌ Черга переповнена.", cancellationToken: ct);
         }
 
         public async Task HandleError(ITelegramBotClient bot, Exception ex, CancellationToken ct)

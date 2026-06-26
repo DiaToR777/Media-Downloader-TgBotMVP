@@ -1,7 +1,6 @@
 ﻿using MediaDownloaderTgBotMVP.Database.Entities;
 using MediaDownloaderTgBotMVP.Database.Enums;
 using Microsoft.EntityFrameworkCore;
-using System.Runtime.InteropServices;
 
 namespace MediaDownloaderTgBotMVP.Database.Repositories
 {
@@ -22,24 +21,34 @@ namespace MediaDownloaderTgBotMVP.Database.Repositories
                     c.Quality == quality);
         }
 
-        public async Task<int> SaveAsync(string sourceUrl, string videoId, Platform platform, string fileId, Enums.FileType fileType, MediaQuality quality, long fileSizeBytes)
+        public async Task<int> SaveAsync(string url, string videoId, Platform platform, string fileId, FileType format, MediaQuality quality, long fileSizeBytes, CancellationToken ct = default)
         {
-            var cached = new CachedMedia
+            var media = new CachedMedia
             {
-                SourceUrl = sourceUrl,
+                SourceUrl = url,
                 VideoId = videoId,
                 Platform = platform,
                 FileId = fileId,
-                FileType = fileType,
+                FileType = format,
                 Quality = quality,
-                FileSizeBytes = fileSizeBytes
+                FileSizeBytes = fileSizeBytes,
+                CreatedAt = DateTime.UtcNow
             };
-            _db.CachedMedias.Add(cached);
-            await _db.SaveChangesAsync();
 
-            return cached.Id;
+            _db.CachedMedias.Add(media);
+
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+                return media.Id;
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException pgEx && pgEx.SqlState == "23505")
+            {
+                _db.Entry(media).State = EntityState.Detached;
+                var existing = await GetByVideoIdAsync(platform, videoId, format, quality, ct);
+                return existing?.Id ?? throw ex;
+            }
         }
-
         public async Task<CachedMedia?> GetByVideoIdAsync(Platform platform, string videoId, FileType fileType, MediaQuality quality, CancellationToken ct)
         {
             return await _db.CachedMedias.FirstOrDefaultAsync(c =>

@@ -22,10 +22,10 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(token));
         services.AddSingleton<YtDlpMetadataService>();
 
-
         services.AddScoped<UserRepository>();
         services.AddScoped<CachedMediaRepository>();
         services.AddScoped<DownloadHistoryRepository>();
+        services.AddScoped<PendingDownloadRepository>();
 
         services.AddSingleton<DownloadWorker>(provider =>
         {
@@ -37,6 +37,7 @@ var host = Host.CreateDefaultBuilder(args)
         });
 
         services.AddHostedService(provider => provider.GetRequiredService<DownloadWorker>());
+        services.AddHostedService<CleanupService>();
 
         services.AddSingleton<TelegramService>();
     })
