@@ -204,7 +204,6 @@ public class DownloadWorker : BackgroundService
 
             var fileId = task.ChosenFormat == FileType.Audio ? sentMessage.Audio!.FileId : sentMessage.Video!.FileId;
             int newCacheId = await cacheRepo.SaveAsync(pending.Url, pending.VideoId!, pending.Platform, fileId, task.ChosenFormat.Value, MediaQuality.Standard, pending.FilesizeBytes ?? 0);
-
             await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Done, ct, newCacheId);
             await pendingRepo.DeleteAsync(pending.Id, ct);
             await _bot.DeleteMessage(task.ChatId, task.ProgressMessage.MessageId, cancellationToken: ct);
@@ -221,7 +220,6 @@ public class DownloadWorker : BackgroundService
             if (Directory.Exists(taskFolder)) Directory.Delete(taskFolder, true);
         }
     }
-
     private async Task RecoverPendingTasksAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
