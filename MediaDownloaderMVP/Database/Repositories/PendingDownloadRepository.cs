@@ -27,12 +27,6 @@ namespace MediaDownloaderTgBotMVP.Database.Repositories
             return pending;
         }
 
-        public async Task<PendingDownload?> GetAsync(long chatId, int messageId, CancellationToken ct = default)
-        {
-            return await _db.PendingDownloads
-                .FirstOrDefaultAsync(p => p.ChatId == chatId && p.MessageId == messageId, ct);
-        }
-
         public async Task<PendingDownload?> GetAsync(int id, CancellationToken ct = default)
         {
             return await _db.PendingDownloads.FindAsync([id], ct);
@@ -50,11 +44,9 @@ namespace MediaDownloaderTgBotMVP.Database.Repositories
         public async Task<List<PendingDownload>> GetStuckAsync(CancellationToken ct = default)
         {
             return await _db.PendingDownloads
-                .Where(p => p.Status == PendingDownloadStatus.Downloading
-                    && p.CreatedAt < DateTime.UtcNow.AddMinutes(-5))
+                .Where(p => p.Status == PendingDownloadStatus.Downloading)
                 .ToListAsync(ct);
         }
-
         public async Task<int> DeleteExpiredAsync(CancellationToken ct = default)
         {
             return await _db.PendingDownloads

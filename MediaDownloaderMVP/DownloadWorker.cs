@@ -40,15 +40,17 @@ public class DownloadWorker : BackgroundService
 
     public ChannelWriter<DownloadTask> Writer => _queue.Writer;
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await RecoverPendingTasksAsync(stoppingToken);
+
         var workers = new Task[_maxConcurrentDownloads];
         for (int i = 0; i < _maxConcurrentDownloads; i++)
         {
             workers[i] = ProcessQueueAsync(i + 1, stoppingToken);
         }
         Console.WriteLine($"✓ [Worker] Запущено потоків: {_maxConcurrentDownloads}");
-        return Task.WhenAll(workers);
+        await Task.WhenAll(workers);
     }
 
     private async Task ProcessQueueAsync(int workerId, CancellationToken ct)
@@ -165,7 +167,6 @@ public class DownloadWorker : BackgroundService
         }
 
         await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Pending, ct);
-        await _bot.EditMessageText(task.ChatId, task.ProgressMessage.MessageId, "⏳ Завантажую відео на сервер...", cancellationToken: ct);
 
         string taskFolder = Path.Combine(_tempFolder, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(taskFolder);
@@ -205,7 +206,7 @@ public class DownloadWorker : BackgroundService
             int newCacheId = await cacheRepo.SaveAsync(pending.Url, pending.VideoId!, pending.Platform, fileId, task.ChosenFormat.Value, MediaQuality.Standard, pending.FilesizeBytes ?? 0);
 
             await historyRepo.UpdateStatusAsync(history.Id, DownloadStatus.Done, ct, newCacheId);
-            await pendingRepo.DeleteAsync(pending.Id, ct); 
+            await pendingRepo.DeleteAsync(pending.Id, ct);
             await _bot.DeleteMessage(task.ChatId, task.ProgressMessage.MessageId, cancellationToken: ct);
         }
         catch (Exception ex)
@@ -219,6 +220,35 @@ public class DownloadWorker : BackgroundService
         {
             if (Directory.Exists(taskFolder)) Directory.Delete(taskFolder, true);
         }
-
     }
+
+    private async Task RecoverPendingTasksAsync(CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var pendingRepo = scope.ServiceProvider.GetRequiredService<PendingDownloadRepository>();
+
+        var pendingTasks = await pendingRepo.GetStuckAsync(ct);
+
+        if (pendingTasks.Any())
+        {
+            Console.WriteLine($"[Recover] 🔄 Знайдено {pendingTasks.Count()} завислих завдань. Відновлюю в чергу...");
+
+            foreach (var task in pendingTasks)
+            {
+                var messageInfo = new MessageInfo(task.MessageId, task.ChatId);
+
+                await _queue.Writer.WriteAsync(new DownloadTask(
+                    DbUserId: task.UserId,
+                    ChatId: task.ChatId,
+                    Url: task.Url,
+                    ProgressMessage: messageInfo,
+                    PendingId: task.Id,
+                    ChosenFormat: task.ChosenFormat
+                ), ct);
+            }
+
+            Console.WriteLine($"[Recover] ✓ Усі завдання успішно повернуто в чергу.");
+        }
+    }
+
 }

@@ -96,7 +96,7 @@ namespace MediaDownloaderTgBotMVP
 
             var pending = await pendingRepo.CreateAsync(userId, chatId, progressMessage.MessageId, url,  ct);
 
-            var task = new DownloadTask(userId, chatId, url, progressMessage, pending.Id, pending.ChosenFormat);
+            var task = new DownloadTask(userId, chatId, url, new MessageInfo( progressMessage.Id, chatId), pending.Id, pending.ChosenFormat);
 
             if (!_downloadWorker.Writer.TryWrite(task))
             {
@@ -116,7 +116,9 @@ namespace MediaDownloaderTgBotMVP
             if (parts.Length != 3 || !int.TryParse(parts[2], out int pendingId)) return;
 
             var formatStr = parts[1]; 
+
             var chatId = callbackQuery.Message!.Chat.Id;
+            int messageId = callbackQuery.Message.MessageId;
 
             await _bot.AnswerCallbackQuery(callbackQuery.Id, cancellationToken: ct);
 
@@ -134,9 +136,9 @@ namespace MediaDownloaderTgBotMVP
             pending.Status = PendingDownloadStatus.Downloading;
             await pendingRepo.UpdateAsync(ct);
 
-            var progressMessage = await _bot.SendMessage(chatId, "⏳ Додано в чергу завантаження...", cancellationToken: ct);
+            var progressMessage = await _bot.EditMessageText(chatId, messageId, "⏳ Завантажую медіа, зачекайте...", cancellationToken: ct); 
 
-            var task = new DownloadTask(pending.UserId, chatId, pending.Url, progressMessage, pending.Id, pending.ChosenFormat);
+            var task = new DownloadTask(pending.UserId, chatId, pending.Url, new MessageInfo(messageId, chatId), pending.Id, pending.ChosenFormat);
 
             if (!_downloadWorker.Writer.TryWrite(task))
                 await _bot.EditMessageText(chatId, progressMessage.MessageId, "❌ Черга переповнена.", cancellationToken: ct);
