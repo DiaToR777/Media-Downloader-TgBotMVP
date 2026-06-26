@@ -28,8 +28,17 @@ jobs:
           push: true
           tags: ghcr.io/diator777/media-downloader-tgbotmvp:latest
 
+      - name: Copy docker-compose.yml to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: "~/tgbot/"
+
       - name: Deploy to server
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -38,4 +47,4 @@ jobs:
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u diator777 --password-stdin
             cd ~/tgbot
             docker compose pull
-            docker compose up -d
+            docker compose up -d --remove-orphans
